@@ -1,0 +1,11 @@
+{
+  "required": true,
+  "package": "net.instaslate.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "mixins": [
+    "PlayerMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
