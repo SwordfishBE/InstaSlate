@@ -1,26 +1,31 @@
 package net.instaslate;
 
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.instaslate.config.InstaSlateConfig;
 import net.instaslate.config.InstaSlateConfigManager;
+import net.minecraft.core.HolderSet;
+import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.HolderGetter;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.enchantment.Enchantment;
 import net.minecraft.world.item.enchantment.EnchantmentHelper;
 import net.minecraft.world.item.enchantment.Enchantments;
-import net.minecraft.world.level.block.Block;
+import net.minecraft.world.item.component.Tool;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.state.BlockState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Set;
+import java.util.ArrayList;
+import java.util.List;
 
 public class InstaSlate implements ModInitializer {
 
@@ -31,38 +36,9 @@ public class InstaSlate implements ModInitializer {
             .orElse("InstaSlate");
     public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
-    private static final Set<Block> BOOSTED_BLOCKS = Set.of(
-            Blocks.DEEPSLATE,
-            Blocks.COBBLED_DEEPSLATE,
-            Blocks.COBBLED_DEEPSLATE_STAIRS,
-            Blocks.COBBLED_DEEPSLATE_SLAB,
-            Blocks.COBBLED_DEEPSLATE_WALL,
-            Blocks.POLISHED_DEEPSLATE,
-            Blocks.POLISHED_DEEPSLATE_STAIRS,
-            Blocks.POLISHED_DEEPSLATE_SLAB,
-            Blocks.POLISHED_DEEPSLATE_WALL,
-            Blocks.DEEPSLATE_TILES,
-            Blocks.DEEPSLATE_TILE_STAIRS,
-            Blocks.DEEPSLATE_TILE_SLAB,
-            Blocks.DEEPSLATE_TILE_WALL,
-            Blocks.DEEPSLATE_BRICKS,
-            Blocks.DEEPSLATE_BRICK_STAIRS,
-            Blocks.DEEPSLATE_BRICK_SLAB,
-            Blocks.DEEPSLATE_BRICK_WALL,
-            Blocks.CHISELED_DEEPSLATE,
-            Blocks.CRACKED_DEEPSLATE_BRICKS,
-            Blocks.CRACKED_DEEPSLATE_TILES,
-            Blocks.INFESTED_DEEPSLATE,
-            Blocks.REINFORCED_DEEPSLATE,
-            Blocks.DEEPSLATE_COAL_ORE,
-            Blocks.DEEPSLATE_COPPER_ORE,
-            Blocks.DEEPSLATE_DIAMOND_ORE,
-            Blocks.DEEPSLATE_EMERALD_ORE,
-            Blocks.DEEPSLATE_GOLD_ORE,
-            Blocks.DEEPSLATE_IRON_ORE,
-            Blocks.DEEPSLATE_LAPIS_ORE,
-            Blocks.DEEPSLATE_REDSTONE_ORE
-    );
+    private static final float BOOSTED_DEEPSLATE_TOOL_SPEED = 38.3F;
+    private static Tool defaultNetheritePickaxeTool;
+    private static Tool boostedNetheritePickaxeTool;
 
     private static InstaSlateConfigManager configManager;
     private static InstaSlateConfig config;
@@ -71,6 +47,9 @@ public class InstaSlate implements ModInitializer {
     public void onInitialize() {
         configManager = new InstaSlateConfigManager();
         config = configManager.load();
+        ServerTickEvents.END_SERVER_TICK.register(server ->
+                server.getPlayerList().getPlayers().forEach(InstaSlate::updateBoostedMainHandTool)
+        );
 
         LOGGER.info("{} Mod initialized. Version: {}", getLogPrefix(), getModVersion());
     }
@@ -92,17 +71,57 @@ public class InstaSlate implements ModInitializer {
         LOGGER.debug("{} Config updated: enabled={}", getLogPrefix(), config.isEnabled());
     }
 
-    public static boolean shouldBoostDeepslateMining(Player player, BlockState state) {
-        if (!config.isEnabled()) {
-            return false;
+    public static String getLogPrefix() {
+        return "[" + MOD_NAME + "]";
+    }
+
+    public static String getModVersion() {
+        return FabricLoader.getInstance()
+                .getModContainer(MOD_ID)
+                .map(container -> container.getMetadata().getVersion().getFriendlyString())
+                .orElse("unknown");
+    }
+
+    private static void updateBoostedMainHandTool(ServerPlayer player) {
+        ensureToolProfilesInitialized();
+
+        if (defaultNetheritePickaxeTool == null || boostedNetheritePickaxeTool == null) {
+            return;
         }
 
-        if (!BOOSTED_BLOCKS.contains(state.getBlock())) {
-            return false;
-        }
-
+        boolean changed = false;
+        Inventory inventory = player.getInventory();
         ItemStack mainHandStack = player.getMainHandItem();
-        if (!mainHandStack.is(Items.NETHERITE_PICKAXE)) {
+        boolean shouldBoostMainHand = shouldBoostMainHandTool(player, mainHandStack);
+
+        if (shouldBoostMainHand && !isBoostedNetheritePickaxe(mainHandStack)) {
+            mainHandStack.set(DataComponents.TOOL, boostedNetheritePickaxeTool);
+            changed = true;
+        } else if (!shouldBoostMainHand && isBoostedNetheritePickaxe(mainHandStack)) {
+            mainHandStack.set(DataComponents.TOOL, defaultNetheritePickaxeTool);
+            changed = true;
+        }
+
+        for (int slot = 0; slot < inventory.getContainerSize(); slot++) {
+            ItemStack stack = inventory.getItem(slot);
+            if (stack == mainHandStack || !isBoostedNetheritePickaxe(stack)) {
+                continue;
+            }
+
+            stack.set(DataComponents.TOOL, defaultNetheritePickaxeTool);
+            changed = true;
+        }
+
+        if (!changed) {
+            return;
+        }
+
+        inventory.setChanged();
+        player.containerMenu.broadcastChanges();
+    }
+
+    private static boolean shouldBoostMainHandTool(Player player, ItemStack mainHandStack) {
+        if (!config.isEnabled() || !mainHandStack.is(Items.NETHERITE_PICKAXE)) {
             return false;
         }
 
@@ -123,14 +142,54 @@ public class InstaSlate implements ModInitializer {
         return haste != null && haste.getAmplifier() >= 1;
     }
 
-    public static String getLogPrefix() {
-        return "[" + MOD_NAME + "]";
+    private static boolean isBoostedNetheritePickaxe(ItemStack stack) {
+        return stack.is(Items.NETHERITE_PICKAXE) && boostedNetheritePickaxeTool != null
+                && boostedNetheritePickaxeTool.equals(stack.get(DataComponents.TOOL));
     }
 
-    public static String getModVersion() {
-        return FabricLoader.getInstance()
-                .getModContainer(MOD_ID)
-                .map(container -> container.getMetadata().getVersion().getFriendlyString())
-                .orElse("unknown");
+    private static Tool createBoostedNetheritePickaxeTool() {
+        List<Tool.Rule> boostedRules = new ArrayList<>();
+        boolean deepslateRuleInserted = false;
+
+        for (Tool.Rule rule : defaultNetheritePickaxeTool.rules()) {
+            boostedRules.add(rule);
+
+            if (!deepslateRuleInserted && rule.correctForDrops().filter(correctForDrops -> !correctForDrops).isPresent()) {
+                boostedRules.add(Tool.Rule.minesAndDrops(
+                        HolderSet.direct(Blocks.DEEPSLATE.builtInRegistryHolder()),
+                        BOOSTED_DEEPSLATE_TOOL_SPEED
+                ));
+                deepslateRuleInserted = true;
+            }
+        }
+
+        if (!deepslateRuleInserted) {
+            boostedRules.add(0, Tool.Rule.minesAndDrops(
+                    HolderSet.direct(Blocks.DEEPSLATE.builtInRegistryHolder()),
+                    BOOSTED_DEEPSLATE_TOOL_SPEED
+            ));
+        }
+
+        return new Tool(
+                boostedRules,
+                defaultNetheritePickaxeTool.defaultMiningSpeed(),
+                defaultNetheritePickaxeTool.damagePerBlock(),
+                defaultNetheritePickaxeTool.canDestroyBlocksInCreative()
+        );
+    }
+
+    private static void ensureToolProfilesInitialized() {
+        if (defaultNetheritePickaxeTool != null && boostedNetheritePickaxeTool != null) {
+            return;
+        }
+
+        Tool tool = Items.NETHERITE_PICKAXE.getDefaultInstance().get(DataComponents.TOOL);
+        if (tool == null) {
+            LOGGER.warn("{} Netherite pickaxe tool component is not available yet.", getLogPrefix());
+            return;
+        }
+
+        defaultNetheritePickaxeTool = tool;
+        boostedNetheritePickaxeTool = createBoostedNetheritePickaxeTool();
     }
 }
