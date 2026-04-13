@@ -11,7 +11,6 @@ The mod is intentionally small and focused. If the conditions are not met, vanil
 ## Features
 
 - Speeds up deepslate mining to stone-like speed under the correct setup
-- Supports the full vanilla deepslate family, including deepslate ores
 - Includes a simple config file
 - Optional Mod Menu integration
 - Optional Cloth Config screen on the client
