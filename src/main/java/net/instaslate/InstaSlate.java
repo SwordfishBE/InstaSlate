@@ -52,6 +52,7 @@ public class InstaSlate implements ModInitializer {
         );
 
         LOGGER.info("{} Mod initialized. Version: {}", getLogPrefix(), getModVersion());
+        UpdateChecker.checkForUpdates();
     }
 
     public static InstaSlateConfig getConfig() {
