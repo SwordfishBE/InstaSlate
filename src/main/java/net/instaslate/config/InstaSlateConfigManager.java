@@ -2,6 +2,7 @@ package net.instaslate.config;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonParseException;
 import com.google.gson.stream.JsonReader;
 import net.fabricmc.loader.api.FabricLoader;
 import net.instaslate.InstaSlate;
@@ -49,9 +50,11 @@ public class InstaSlateConfigManager {
             save(loadedConfig);
             InstaSlate.LOGGER.debug("{} Config loaded: {}", InstaSlate.getLogPrefix(), loadedConfig);
             return loadedConfig;
-        } catch (IOException exception) {
+        } catch (IOException | JsonParseException | IllegalStateException exception) {
             InstaSlate.LOGGER.warn("{} Failed to read config file, using defaults.", InstaSlate.getLogPrefix(), exception);
-            return new InstaSlateConfig();
+            InstaSlateConfig defaults = new InstaSlateConfig();
+            save(defaults);
+            return defaults;
         }
     }
 
