@@ -1,5 +1,5 @@
 plugins {
-    // 26.1: Minecraft is now unobfuscated. Loom 1.16 + Gradle 9.4 are required.
+    // 26.2 pre-releases: Minecraft is unobfuscated. Loom 1.16 + Gradle 9.4 are required.
     id 'net.fabricmc.fabric-loom' version "${loom_version}"
     id 'maven-publish'
 }
